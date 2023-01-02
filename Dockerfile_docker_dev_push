@@ -1,21 +1,5 @@
 # This dockerfile is meant to build Hive images on an arm64-based Mac.
 # Author: Feilian Xie - Openshift QE - fxie@redhat.com
-#
-# Prerequisites:
-# 1. A ./env/quay_credentials.env file which includes "username" and "password" environment variables (for quay.io)
-# 2. Change the value of the "repo" environment variable below to the name of your quay.io repo for Hive !
-#
-# Usage:
-# 1. docker-compose up --build (recommended)
-# OR
-# 1. docker build . --platform linux/amd64 -f Dockerfile_docker_dev_push -t docker-dev-push
-# 2. Get image id using the "docker images" command
-# 3. docker run --privileged -v /var/run/docker.sock:/var/run/docker.sock --platform linux/amd64 --rm --env-file ./env/quay_credentials.env image_id
-#
-# Note:
-# 1. It is normal that some steps run slow, as tranforming arm64 machine code to the amd64 equivalent reduces code efficiency.
-#    Therefore, it is recommended to reserve a fair amount of computing resources to docker.
-#    For ex.: 8 out of 10 CPU cores + 16 out of 32 GB memory + 2 out of 4 GB swap on a 32-GB + M1-Pro MacBookPro-2021.
 
 FROM golang:1.19.4-bullseye
 
