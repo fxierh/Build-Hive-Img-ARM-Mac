@@ -1,0 +1,17 @@
+# This docker-compose file is meant to build Hive images on an arm64 Mac.
+# Author: Feilian Xie - Openshift QE - fxie@redhat.com
+version: '3.9'
+services:
+  linux_amd64_environment:
+    platform: linux/amd64
+    privileged: true
+    build:
+      context: .
+      dockerfile: Dockerfile_docker_dev_push
+    volumes:
+      # Required for running docker inside docker
+      # Warning: docker client arch = amd64, but docker engine (daemon etc.) arch = arm64
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      # Should include "username" and "password" environment variables (for quay.io)
+      - ./env/quay_credentials.env

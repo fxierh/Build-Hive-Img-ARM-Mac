@@ -1,0 +1,68 @@
+# This dockerfile is meant to build Hive images on an arm64-based Mac.
+# Author: Feilian Xie - Openshift QE - fxie@redhat.com
+#
+# Prerequisites:
+# 1. A ./env/quay_credentials.env file which includes "username" and "password" environment variables (for quay.io)
+# 2. Change the value of the "repo" environment variable below to the name of your quay.io repo for Hive !
+#
+# Usage:
+# 1. docker-compose up --build (recommended)
+# OR
+# 1. docker build . --platform linux/amd64 -f Dockerfile_docker_dev_push -t docker-dev-push
+# 2. Get image id using the "docker images" command
+# 3. docker run --privileged -v /var/run/docker.sock:/var/run/docker.sock --platform linux/amd64 --rm --env-file ./env/quay_credentials.env image_id
+#
+# Note:
+# 1. It is normal that some steps run slow, as tranforming arm64 machine code to the amd64 equivalent reduces code efficiency.
+#    Therefore, it is recommended to reserve a fair amount of computing resources to docker.
+#    For ex.: 8 out of 10 CPU cores + 16 out of 32 GB memory + 2 out of 4 GB swap on a 32-GB + M1-Pro MacBookPro-2021.
+
+FROM golang:1.19.4-bullseye
+
+# CHANGE THIS !
+ENV repo=hive
+
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip ca-certificates curl gnupg lsb-release
+
+WORKDIR /go/src
+
+# Clone hive & get id of the latest commit
+RUN git clone https://github.com/openshift/hive.git
+
+WORKDIR /go/src/hive
+
+# On Debian /bin/sh links to /bin/dash by default, causing the "set -o ..." commands in makefiles to error out.
+# We need to re-link /bin/sh to /bin/bash.
+RUN rm /bin/sh && \
+    ln -s /bin/bash /bin/sh
+
+# Install imagebuilder (make commands will error out otherwise)
+RUN go install github.com/openshift/imagebuilder/cmd/imagebuilder@v1.2.1
+
+# Install docker-amd64
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+# Build the image-hive-fedora-dev image first, which is required for building the final image.
+# This step requires the fedora:33 image (see makefile), which will be pulled if non-existent.
+# As docker pulls base image of the same architecture as docker engine by default,
+# in our case fedora-arm will be pulled if non-existent.
+# Therefore, fedora-amd is pulled proactively before this step.
+# This avoids the erroneous automatic pulling.
+# Note:
+# 1. In our case, docker enginer arch = amd64, while docker engine arch = arm64. This is because the arm-Mac's
+#    docker enginer is shared with the amd64 container using bind mount.
+# 2. As a result of a few trial and error, the underlying "imagebuilder" tool (used in a makefile)
+#    does not read from the environent variable "DOCKER_DEFAULT_PLATFORM" (from which docker decides the default arch).
+#    Therefore, the only way to avoid modifying the makefiles is to manually cache a correct fedora image.
+# 3. Change the image tag format (the "${commit_id}" part) as you wish.
+CMD docker pull --platform linux/amd64 fedora:33 && \
+    make image-hive-fedora-dev-base && \
+    docker login quay.io -u $username -p $password && \
+    export commit_id=$(git log | head -n 1 | awk '{print $2}' | cut -c 1-7) && \
+    IMG=quay.io/$username/$repo:${commit_id} make docker-dev-push
